@@ -226,6 +226,77 @@ Check:
 - `http://...` redirects to `https://...`
 - session cookie contains `secure`
 
+## Adapting this setup to your own domain
+
+If you want to reuse this implementation for another company or another Chatwoot instance, replace the MABE-specific values with your own:
+
+### 1. Domain
+
+Change:
+
+- `FRONTEND_URL=https://chats.mabeimpact.com`
+
+To your own public Chatwoot URL, for example:
+
+- `FRONTEND_URL=https://support.example.com`
+
+Then point your DNS and Railway custom domain to that hostname.
+
+### 2. Storage
+
+Create your own Cloudflare R2 bucket and replace:
+
+- `STORAGE_BUCKET_NAME`
+- `STORAGE_ACCESS_KEY_ID`
+- `STORAGE_SECRET_ACCESS_KEY`
+- `STORAGE_ENDPOINT`
+
+Do not reuse keys across unrelated deployments.
+
+### 3. WhatsApp
+
+If you connect a different WhatsApp number or Meta app, update the channel inside Chatwoot with that deployment's:
+
+- phone number
+- phone number ID
+- business account ID
+- API key / access token
+
+Also make sure Meta can reach your final public HTTPS URL, not a local tunnel or temporary hostname.
+
+### 4. Mail
+
+Set your own outbound email variables:
+
+- `MAILER_SENDER_EMAIL`
+- `SMTP_ADDRESS`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+
+### 5. SSL
+
+Keep the same pattern if you are behind Railway + Cloudflare:
+
+- `ASSUME_SSL=true`
+- `FORCE_SSL=true`
+
+Then verify:
+
+- HTTPS healthcheck works
+- HTTP redirects to HTTPS
+- session cookie is `secure`
+
+### 6. Update workflow
+
+You can keep the same Git workflow:
+
+1. Fork Chatwoot
+2. Create a production branch
+3. Add service-specific Railway config files
+4. Keep service-level settings in Railway
+5. Sync from upstream when new Chatwoot updates are released
+
 ## Notes
 
 - Avoid manual `railway up` deploys from arbitrary local states once GitHub autodeploy is established.
