@@ -121,6 +121,12 @@ Chatwoot now supports 1-Click deployment to DigitalOcean as a kubernetes app.
 
 For other supported options, checkout our [deployment page](https://chatwoot.com/deploy).
 
+### Railway deployment notes
+
+If you're deploying Chatwoot to Railway with separate `web` and `worker` services, service-specific config-as-code files, Cloudflare R2, and Cloudflare SSL in front of Railway, see the validated reference here:
+
+- [deployment/railway-mabe.md](./deployment/railway-mabe.md)
+
 ## Security
 
 Looking to report a vulnerability? Please refer our [SECURITY.md](./SECURITY.md) file.

@@ -1,6 +1,58 @@
-# Chatwoot on Railway for MABE
+# Deploying Chatwoot to Railway with separate web and worker services, Cloudflare R2, and Cloudflare SSL
 
 This document is the operational reference for the MABE Chatwoot production deployment.
+
+It is also intentionally written as a searchable implementation note for anyone trying to run Chatwoot on Railway with:
+
+- separate `web` and `worker` services
+- a Dockerfile-based deploy
+- Cloudflare R2 for Active Storage
+- Cloudflare in front of Railway
+- Rails `FORCE_SSL` enabled behind a proxy
+
+## What broke in the naive Railway setup
+
+These were the main issues we hit when using the "obvious" Railway setup:
+
+1. A single root `/railway.toml` was not enough.
+   - `web` and `worker` need different `startCommand` values.
+   - Using one shared file caused drift and forced manual command swapping.
+
+2. Inbound WhatsApp media failed even though outbound uploads worked.
+   - Chatwoot UI uploads could succeed while inbound WhatsApp attachments still failed in Sidekiq.
+   - The worker raised:
+     - `Aws::S3::Errors::InvalidRequest`
+     - `You can only specify one non-default checksum at a time.`
+
+3. `FORCE_SSL=true` is not enough by itself behind Railway + Cloudflare.
+   - Railway and Cloudflare terminate TLS upstream.
+   - Rails may still think the request is plain HTTP unless `assume_ssl` is enabled.
+
+## What solved it
+
+The validated fix set was:
+
+1. Split Railway config by service:
+   - `/railway.web.toml`
+   - `/railway.worker.toml`
+
+2. Run both services from the same fork/branch, but with different config-as-code file paths in Railway.
+
+3. For R2, set all normal S3-compatible variables plus:
+   - `AWS_REQUEST_CHECKSUM_CALCULATION=when_required`
+   - `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`
+
+4. Make sure `worker` is actually redeployed after changing those variables.
+   - Seeing the variables in Railway UI is not enough.
+   - Sidekiq must be restarted with a fresh deployment.
+
+5. Add proxy-aware SSL support in Rails:
+   - `config.assume_ssl = ... ENV.fetch('ASSUME_SSL', false)`
+   - `config.force_ssl = ... ENV.fetch('FORCE_SSL', false)`
+
+6. Set on `web`:
+   - `ASSUME_SSL=true`
+   - `FORCE_SSL=true`
 
 ## Production targets
 
@@ -32,6 +84,8 @@ To keep autodeploy clean:
 
 - `web` must point to `/railway.web.toml`
 - `worker` must point to `/railway.worker.toml`
+
+If Railway UI deploy fields are read-only, that is expected while config-as-code is active. Point each service to its own file path instead of trying to edit the command inline in the dashboard.
 
 ## Current runtime behavior
 
@@ -68,6 +122,15 @@ Required variables on `web` and `worker`:
 
 The checksum variables are required for inbound WhatsApp media uploads to R2.
 
+Without them, a common failure mode is:
+
+- Chatwoot receives the WhatsApp event
+- the message row is created
+- an attachment record is created
+- but the actual file upload to R2 fails in the worker
+
+That produces "ghost attachments" that appear in message payloads but do not render correctly in the UI.
+
 ## SSL
 
 Production runs behind Railway and Cloudflare.
@@ -87,6 +150,12 @@ Expected production checks:
 - `https://chats.mabeimpact.com/health` returns `200`
 - `http://chats.mabeimpact.com/health` redirects with `301`
 - Session cookie is marked `secure`
+
+If `FORCE_SSL=true` is set but cookies are not marked `secure`, or the app still behaves like HTTP behind the proxy, verify that:
+
+- `ASSUME_SSL=true` is present in the live `web` runtime
+- the running deployment actually includes the Rails `assume_ssl` code path
+- the service is deploying from the expected branch and config file
 
 ## Safe update flow from upstream
 
@@ -124,6 +193,38 @@ After important changes, verify:
 4. WhatsApp media inbound works
 5. Upload from Chatwoot UI works
 6. R2 objects are being created
+
+## Fast troubleshooting checklist
+
+### Problem: `web` and `worker` keep overwriting each other
+
+Check:
+
+- `web` is using `/railway.web.toml`
+- `worker` is using `/railway.worker.toml`
+
+### Problem: inbound WhatsApp images/files do not render
+
+Check:
+
+- `ACTIVE_STORAGE_SERVICE=s3_compatible`
+- `STORAGE_ENDPOINT` points to R2
+- checksum env vars exist on both `web` and `worker`
+- `worker` has been redeployed after those vars were added
+
+Look for this error in `worker` logs:
+
+- `Aws::S3::Errors::InvalidRequest`
+- `You can only specify one non-default checksum at a time.`
+
+### Problem: SSL redirects or cookies behave strangely
+
+Check:
+
+- `ASSUME_SSL=true`
+- `FORCE_SSL=true`
+- `http://...` redirects to `https://...`
+- session cookie contains `secure`
 
 ## Notes
 
