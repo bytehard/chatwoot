@@ -1,0 +1,10 @@
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+preDeployCommand = "sh -lc \"POSTGRES_STATEMENT_TIMEOUT=600s bundle exec rails db:chatwoot_prepare\""
+startCommand = "sh -lc \"bundle exec rails ip_lookup:setup && bin/rails server -p ${PORT:-3000} -e ${RAILS_ENV:-production}\""
+healthcheckPath = "/health"
+healthcheckTimeout = 600
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
