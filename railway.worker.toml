@@ -2,7 +2,7 @@
 builder = "DOCKERFILE"
 
 [deploy]
-preDeployCommand = "sh -lc \"POSTGRES_STATEMENT_TIMEOUT=600s bundle exec rails db:chatwoot_prepare\""
+preDeployCommand = "sh deployment/railway_worker_predeploy.sh"
 startCommand = "sh -lc \"bundle exec rails ip_lookup:setup && bundle exec sidekiq -C config/sidekiq.yml\""
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

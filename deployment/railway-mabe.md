@@ -101,7 +101,9 @@ If Railway UI deploy fields are read-only, that is expected while config-as-code
 ### Worker
 
 - Pre-deploy:
-  - `POSTGRES_STATEMENT_TIMEOUT=600s bundle exec rails db:chatwoot_prepare`
+  - `sh deployment/railway_worker_predeploy.sh`
+  - Retries only `ActiveRecord::ConcurrentMigrationError` while `web` owns the migration lock.
+  - Exits immediately for every other migration error.
 - Start:
   - `bundle exec rails ip_lookup:setup && bundle exec sidekiq -C config/sidekiq.yml`
 
@@ -161,20 +163,26 @@ If `FORCE_SSL=true` is set but cookies are not marked `secure`, or the app still
 
 Use this flow whenever you want new Chatwoot updates without losing the MABE deploy setup:
 
-1. Fetch upstream changes.
-2. Rebase or merge `upstream/develop` into `mabe-production`.
-3. Review conflicts in:
+1. Create and verify a PostgreSQL backup.
+2. Fetch upstream tags and select an exact stable release tag such as `v4.16.2`.
+3. Merge that tag into a temporary upgrade branch created from `mabe-production`.
+4. Validate the upgrade against an isolated Railway environment and a restored production dump.
+5. Review conflicts or upstream changes in:
    - `Dockerfile`
    - `config/environments/production.rb`
    - `railway.web.toml`
    - `railway.worker.toml`
-4. Push `mabe-production` to `origin`.
-5. Let Railway autodeploy `web` and `worker`.
-6. Validate:
+6. Fast-forward `mabe-production` only after staging succeeds.
+7. Let Railway autodeploy `web` and `worker`.
+   - `web` normally acquires the Rails migration lock first.
+   - `worker` waits and retries only if Rails reports `ActiveRecord::ConcurrentMigrationError`.
+8. Validate:
    - `/health`
    - login
    - WhatsApp inbound/outbound
    - media upload to R2
+
+Do not merge `upstream/develop`, `master`, or an unpinned `latest` reference into production. Pinning the official release tag keeps deployments reproducible.
 
 ## Local git remote layout
 
